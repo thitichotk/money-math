@@ -1,15 +1,21 @@
-# Money-Math
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="public/logo-inverse.svg">
+    <img alt="Money-Math" src="public/logo.svg" height="48">
+  </picture>
+</h1>
 
-**Use it: [moneymath.thitichotk.com](https://moneymath.thitichotk.com)** (Thai and English, works offline once loaded)
+**Live: [moneymath.thitichotk.com](https://moneymath.thitichotk.com)** (Thai and English, works offline once loaded)
 
-Thai loan, savings and deposit calculators. Each one asks its question as a sentence with blanks to fill in, answers in
-one big number with a sentence explaining it, and prints the schedule like a bank passbook. The rules are Thai banks'
-rules: interest by actual days over 365, savings interest paid on 30 June and 31 December, and the ฿20,000 savings-tax
-limit. Deposit rates can be filled in from what each bank reported to the Bank of Thailand.
+Money-Math is a set of Thai loan, savings and deposit calculators. Each one asks its question as a sentence with
+blanks to fill in, answers in one big number with a sentence explaining it, and prints the schedule like a bank
+passbook. The rules are Thai banks' rules: interest by actual days over 365, savings interest paid on 30 June and
+31 December, and the ฿20,000 savings-tax limit. Deposit rates can be filled in from what each bank reported to the
+Bank of Thailand.
 
 ![The loan calculator: "Borrow ฿1,500,000 at 6.5% a year, reducing balance, over 20 years, paid monthly", answered with ฿11,183.60 a month](.github/screenshot.jpg)
 
-## Calculators
+## What it does
 
 | Calculator | What it answers |
 |---|---|
@@ -41,6 +47,8 @@ pnpm build             # static site in dist/
 Without `VITE_BOT_ENDPOINT` everything works except the "use a bank's rate" pickers, which show that rates are
 unavailable.
 
+Cloudflare Pages builds and deploys `main` on every push, and each pull request gets a preview link.
+
 ## How it works
 
 - **Day count.** Deposits use Actual/365: the real number of nights between two dates, divided by 365, leap years
@@ -53,7 +61,7 @@ unavailable.
   works.
 - **Money maths** uses [decimal.js](https://github.com/MikeMcl/decimal.js), so ฿0.1 + ฿0.2 is ฿0.30.
 - **Bank rates** come from the Bank of Thailand's
-  [deposit-rate API](https://apiportal.bot.or.th/), through a small Cloudflare Worker at `rates.thitichotk.com` that
+  [deposit-rate API](https://portal.api.bot.or.th/), through a small Cloudflare Worker at `rates.thitichotk.com` that
   holds the API key and caches responses. The tables show each bank's own figures for the latest business day; real
   offers can depend on the amount and the account's conditions.
 
@@ -69,8 +77,10 @@ These are estimates at a fixed rate, not an offer or advice from a bank.
 | `src/styles/` | The Money-Math design system (`tokens.css`, `components.css`) and the page layout |
 
 Built with React 19, Vite, react-router, i18next and zustand. The chart is hand-written SVG, and the formulas are
-native MathML. It deploys to Cloudflare Pages on every push to `main`, and pull requests get a preview link.
+native MathML.
 
 ## Licence
 
-[MIT](LICENSE). Not affiliated with the Bank of Thailand or any bank.
+[MIT](LICENSE) © 2025–2026 Thitichot K.
+
+Not affiliated with the Bank of Thailand or any bank.
