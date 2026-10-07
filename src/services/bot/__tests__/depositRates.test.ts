@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
   vi.resetModules();
 });
@@ -36,10 +37,11 @@ describe('BOT deposit rate parsing', () => {
 
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => mockResponse,
+      json: () => Promise.resolve(mockResponse),
     });
 
     vi.stubGlobal('fetch', fetchMock);
+    vi.stubEnv('VITE_BOT_ENDPOINT', 'https://rates.example.test/api/deposit_rate');
 
     const {
       getBotDepositRatesForDate,
@@ -58,7 +60,23 @@ describe('BOT deposit rate parsing', () => {
     expect(record?.fixed['24M'].min).toBeCloseTo(1.8);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://bot-deposit-rate.iamfirst251726.workers.dev/api/deposit_rate?start_period=2025-01-02&end_period=2025-01-02',
+      'https://rates.example.test/api/deposit_rate?start_period=2025-01-02&end_period=2025-01-02',
     );
+  });
+
+  it('shares one request and stops at the first failure instead of walking back every day', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubEnv('VITE_BOT_ENDPOINT', 'https://rates.example.test/api/deposit_rate');
+
+    const { getLatestBotDepositRates } = await import('../depositRates');
+
+    const results = await Promise.allSettled([getLatestBotDepositRates(), getLatestBotDepositRates()]);
+    expect(results.map((r) => r.status)).toEqual(['rejected', 'rejected']);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // A failure isn't remembered: the next caller tries again.
+    await getLatestBotDepositRates().catch(() => undefined);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

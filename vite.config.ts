@@ -3,35 +3,30 @@ import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
-const repoBase = '/';
-
-export default defineConfig(({ command }) => ({
-  base: command === 'build' ? repoBase : '/',
+export default defineConfig({
+  base: '/',
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.png', 'favicon.webp'],
+      includeAssets: ['logo-mark.svg', 'logo.svg', 'logo-inverse.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Basic Financial Calculator',
-        short_name: 'FinanceCalc',
-        start_url: repoBase,
+        name: 'Money-Math',
+        short_name: 'Money-Math',
+        description: 'Thai loan, savings and deposit calculators',
+        lang: 'th',
+        start_url: '/',
         display: 'standalone',
-        background_color: '#0f172a',
-        theme_color: '#1976d2',
+        background_color: '#F7F7F5',
+        theme_color: '#F7F7F5',
         icons: [
-          {
-            src: 'favicon.png',
-            sizes: '256x256',
-            type: 'image/png',
-          },
-          {
-            src: 'favicon.webp',
-            sizes: '256x256',
-            type: 'image/webp',
-          },
+          { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
+      // Client-side routes (/loan, /savings, ...) are served by the app shell when offline.
+      workbox: { navigateFallback: '/index.html' },
     }),
   ],
   resolve: {
@@ -43,8 +38,7 @@ export default defineConfig(({ command }) => ({
     globals: true,
     environment: 'jsdom',
     setupFiles: './vitest.setup.ts',
-    coverage: {
-      reporter: ['text', 'lcov'],
-    },
+    // Node 25+ ships its own localStorage global, which hides jsdom's.
+    poolOptions: { forks: { execArgv: ['--no-experimental-webstorage'] } },
   },
-}));
+});

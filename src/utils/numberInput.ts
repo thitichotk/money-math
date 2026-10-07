@@ -1,63 +1,27 @@
-type LocaleFormat = {
-  decimalSeparator: string;
-  thousandsSeparator: string;
-};
+// What people type into a blank: commas are thousands separators (never decimals), one '.', and
+// a leading '-' only where the blank allows negative amounts.
 
-const LOCALE_FORMATS: Record<string, LocaleFormat> = {
-  th: { decimalSeparator: '.', thousandsSeparator: ',' },
-  en: { decimalSeparator: '.', thousandsSeparator: ',' },
-};
-
-const DEFAULT_FORMAT: LocaleFormat = { decimalSeparator: '.', thousandsSeparator: ',' };
-
-export const getLocaleFormat = (locale?: string): LocaleFormat => {
-  if (!locale) return DEFAULT_FORMAT;
-  return LOCALE_FORMATS[locale] || DEFAULT_FORMAT;
-};
-
-export const sanitizeNumericInput = (value: string, locale?: string) => {
-  const format = getLocaleFormat(locale);
-  let sanitized = '';
-  let hasDecimalPoint = false;
-
-  for (const char of value) {
-    if (char >= '0' && char <= '9') {
-      sanitized += char;
-      continue;
-    }
-
-    // Accept both . and , as decimal separators for convenience
-    if ((char === format.decimalSeparator || char === '.' || char === ',') && !hasDecimalPoint) {
-      hasDecimalPoint = true;
-      sanitized += '.'; // Always use . internally
-    }
+export const sanitizeNumericInput = (value: string, allowNegative = false) => {
+  let out = '';
+  let hasDot = false;
+  for (const char of value.trim()) {
+    if (char >= '0' && char <= '9') out += char;
+    else if (char === '.' && !hasDot) {
+      hasDot = true;
+      out += '.';
+    } else if ((char === '-' || char === '−') && allowNegative && out === '') out = '-';
   }
-
-  if (sanitized.startsWith('.')) {
-    sanitized = `0${sanitized}`;
-  }
-
-  return sanitized;
+  return out.replace(/^(-?)\./, '$10.');
 };
 
-export const formatNumericString = (value: string, locale?: string) => {
+/** Groups the integer part with commas: "1500000.5" -> "1,500,000.5". */
+export const formatNumericString = (value: string) => {
   if (!value) return '';
-
-  const format = getLocaleFormat(locale);
-  const [integerPartRaw, decimalPart] = value.split('.');
-  const integerPart = integerPartRaw || '0';
-  const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, format.thousandsSeparator);
-
-  if (decimalPart != null) {
-    return decimalPart !== '' 
-      ? `${formattedInteger}${format.decimalSeparator}${decimalPart}` 
-      : `${formattedInteger}${format.decimalSeparator}`;
-  }
-
-  return formattedInteger;
+  const negative = value.startsWith('-');
+  const [integer, decimal] = value.replace('-', '').split('.');
+  const grouped = (integer || (decimal != null ? '0' : '')).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `${negative ? '-' : ''}${grouped}${decimal != null ? `.${decimal}` : ''}`;
 };
 
-export const formatNumberValue = (value: number | null | undefined, locale?: string) => {
-  if (value == null || Number.isNaN(value)) return '';
-  return formatNumericString(value.toString(), locale);
-};
+/** NaN for an empty or unfinished entry. */
+export const parseNumericString = (value: string) => (/\d/.test(value) ? Number(value) : Number.NaN);

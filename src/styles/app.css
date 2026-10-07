@@ -1,0 +1,95 @@
+/* Money-Math page layout. tokens.css and components.css come from the Money-Math design system
+   (OpenDesign) unchanged; this file lays out the pages the way its reference page does. */
+
+*, *::before, *::after { box-sizing: border-box; }
+html { font-size: calc(16px * var(--font-scale)); }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 400 var(--text-base)/var(--leading-body) var(--font-sans); -webkit-font-smoothing: antialiased; }
+h1, h2, h3, p, ul, ol { margin: 0; }
+a { color: inherit; }
+[hidden] { display: none !important; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.wrap { width: min(1080px, 100% - 48px); margin: 0 auto; }
+
+/* Header: logo, the calculators as words, toggles */
+header.top { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 72px; }
+header.top .brand img { height: 36px; width: auto; display: block; }
+header.top nav { display: flex; gap: 22px; font-size: var(--text-sm); }
+header.top nav a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+header.top nav a:hover { color: var(--fg); }
+header.top nav a[aria-current] { color: var(--fg); font-weight: 600; }
+header.top .right { display: flex; align-items: center; gap: 22px; }
+.toggles button { min-height: 32px; }
+.skip { position: absolute; left: 16px; top: -48px; padding: 8px 12px; background: var(--accent); color: var(--accent-on); border-radius: var(--radius-sm); z-index: 10; }
+.skip:focus { top: 12px; }
+
+/* A calculator: title, the sentence, the answer */
+.calc { padding: 56px 0 64px; display: grid; gap: 36px; border-bottom: 1px solid var(--border); }
+.calc h1 { font-size: var(--text-lg); font-weight: 500; color: var(--muted); }
+.sentence + .sentence { margin-top: 4px; }
+.sentence.small { font-size: calc(var(--text-sentence) * 0.62); line-height: 1.9; max-width: 48ch; }
+.blank select { width: var(--w, auto); max-width: 100%; }
+.sentence .remove { margin-left: 4px; padding: 0 6px; border: 0; background: none; color: var(--muted); font: inherit; font-size: 0.8em; cursor: pointer; border-radius: var(--radius-sm); }
+.sentence .remove:hover { color: var(--danger); }
+.sentence .remove:focus-visible { outline: none; box-shadow: var(--ring-focus); }
+.add { margin-top: 8px; }
+.result { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); gap: 24px 56px; align-items: end; transition: opacity var(--motion-base); }
+.result.stale { opacity: .35; }
+.result .note { grid-column: 1 / -1; font-size: var(--text-xs); color: var(--muted); }
+.because + .because { margin-top: 8px; }
+.loading { color: var(--muted); font-size: var(--text-sm); }
+
+/* Chart and passbook blocks */
+section.block { padding: 56px 0; }
+section.block + section.block { padding-top: 0; }
+section.block h2 { font-size: var(--text-xl); font-weight: 600; }
+.chart-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+.chart .tip { z-index: 2; }
+.book-tools { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
+.book-tools .right { display: flex; gap: 8px; }
+.passbook { overflow-x: auto; }
+.passbook td.p { color: var(--principal); }
+.formula { margin-top: 40px; font-size: var(--text-sm); color: var(--muted); max-width: 72ch; display: grid; gap: 8px; }
+.formula math { font-size: 1.15em; color: var(--fg); }
+
+/* Home: each calculator as the question it answers */
+.home { padding: 56px 0 72px; display: grid; gap: 40px; }
+.home h1 { font: 600 var(--text-sentence)/1.3 var(--font-sans); max-width: 24ch; }
+.home .lede { font-size: var(--text-lg); color: var(--fg-2); max-width: 52ch; }
+.questions { list-style: none; padding: 0; display: grid; border-top: 1px solid var(--border); }
+.questions a { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 24px; padding: 20px 0; border-bottom: 1px solid var(--border); text-decoration: none; }
+.questions a:hover .q, .questions a:focus-visible .q { box-shadow: inset 0 -0.08em 0 var(--fg); }
+.questions a:focus-visible { outline: none; box-shadow: var(--ring-focus); }
+.questions .q { font: 500 calc(var(--text-sentence) * 0.72)/1.4 var(--font-sans); color: var(--fg); justify-self: start; }
+.questions .name { font-size: var(--text-sm); color: var(--muted); align-self: center; }
+.questions .d { grid-column: 1 / -1; font-size: var(--text-sm); color: var(--muted); }
+
+/* About */
+.prose { padding: 56px 0 72px; display: grid; gap: 28px; max-width: 68ch; }
+.prose h1 { font-size: var(--text-2xl); font-weight: 600; }
+.prose h2 { font-size: var(--text-xl); font-weight: 600; margin-top: 12px; }
+.prose p, .prose li { color: var(--fg-2); }
+.prose ul { padding-left: 1.2em; display: grid; gap: 6px; }
+
+footer.site { border-top: 1px solid var(--border); padding: 24px 0 40px; font-size: var(--text-sm); color: var(--muted); display: flex; justify-content: space-between; gap: 12px 24px; flex-wrap: wrap; }
+footer.site nav { display: flex; gap: 18px; }
+
+@media (max-width: 860px) {
+  header.top { padding: 14px 0; flex-wrap: wrap; gap: 12px 24px; }
+  header.top nav { order: 3; flex-basis: 100%; overflow-x: auto; padding-bottom: 4px; }
+  .result { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .wrap { width: calc(100% - 32px); }
+  .calc { padding: 32px 0 48px; }
+  .passbook { padding: 16px 12px; }
+  .passbook .c-p { display: none; }
+}
+
+@media print {
+  header.top, footer.site, .book-tools, .chart-head .key, .add, .sentence .remove, .skip { display: none !important; }
+  body { background: #fff; }
+  .calc { padding: 0 0 24px; }
+  .passbook { box-shadow: none; padding: 0; }
+  section.block { padding: 24px 0; break-inside: avoid-page; }
+}

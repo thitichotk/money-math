@@ -1,117 +1,76 @@
-# Basic Financial Calculator
+# Money-Math
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![React](https://img.shields.io/badge/React-19.1.1-61DAFB?logo=react&logoColor=white)](https://reactjs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8.3-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Vite](https://img.shields.io/badge/Vite-7.1.7-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
-[![Material-UI](https://img.shields.io/badge/Material--UI-7.3.2-007FFF?logo=mui&logoColor=white)](https://mui.com/)
-[![pnpm](https://img.shields.io/badge/pnpm-10.17.1-F69220?logo=pnpm&logoColor=white)](https://pnpm.io/)
-[![PWA](https://img.shields.io/badge/PWA-Enabled-5A0FC8?logo=pwa&logoColor=white)](https://web.dev/progressive-web-apps/)
+**Use it: [moneymath.thitichotk.com](https://moneymath.thitichotk.com)** (Thai and English, works offline once loaded)
 
-A multilingual (English/Thai) suite of web-based calculators for Thai retail banking scenarios. Built with React, Vite, Material UI, and decimal-precise financial logic, the app covers loan amortisation, savings Actual/365 accruals, fixed and tiered deposits, and time-value simulations.
+Thai loan, savings and deposit calculators. Each one asks its question as a sentence with blanks to fill in, answers in
+one big number with a sentence explaining it, and prints the schedule like a bank passbook. The rules are Thai banks'
+rules: interest by actual days over 365, savings interest paid on 30 June and 31 December, and the ฿20,000 savings-tax
+limit. Deposit rates can be filled in from what each bank reported to the Bank of Thailand.
 
-## ✨ Highlights
-- **Clarity-first outputs** with rich tables, charts, and contextual explanations.
-- **Consistent export tooling** for CSV and Excel across every dataset.
-- **Localized UX**: language toggle, right-sized typography controls, and Thai-specific tax rules.
-- **Offline-ready** build via Vite PWA integration and hashed routing for GitHub Pages.
+![The loan calculator: "Borrow ฿1,500,000 at 6.5% a year, reducing balance, over 20 years, paid monthly", answered with ฿11,183.60 a month](.github/screenshot.jpg)
 
-## 🧱 Tech Stack
-- React 18 + TypeScript + Vite
-- Material UI (core + x-charts)
-- Zustand for user preferences (theme, language, text scale)
-- react-hook-form + zod for form validation
-- decimal.js for financial calculations
+## Calculators
 
-## 🚀 Quick Start
+| Calculator | What it answers |
+|---|---|
+| Loan | Each payment, total interest and every instalment, for reducing-balance or flat-rate (car hire-purchase) loans, with the flat rate's equivalent reducing-balance rate |
+| Savings | Interest on a savings account with deposits and withdrawals along the way, accrued nightly and paid twice a year, with the ฿20,000 tax rule worked out per calendar year |
+| Fixed deposit | Interest over one or more terms, rolled over or paid out, with 15% withholding tax, plus a table of what every bank would pay for the same term |
+| Tiered | Interest on a tiered-rate account, where each slice of the balance earns its own rate |
+| Future value | What a lump sum plus regular contributions grows to, by year |
+| NPV | Net present value and internal rate of return for a series of cash flows |
 
-### Prerequisites
-- [Node.js 20+](https://nodejs.org/)
-- [pnpm](https://pnpm.io) (enable with `corepack enable` if not installed)
+Every result can be printed, exported as CSV (raw numbers, opens cleanly in Excel or Sheets), or shared: the inputs
+live in the page's link, so the person you send it to sees the same numbers. Nothing you type is stored or sent
+anywhere. The app only remembers your language, theme and text size.
 
-### Installation & Development
+## Run it locally
+
+Needs Node 20.19+ and pnpm 10.
+
 ```bash
+git clone https://github.com/thitichotk/money-math.git
+cd money-math
 pnpm install
-pnpm dev
-```
-The dev server runs on [http://localhost:5173](http://localhost:5173) with hot module replacement.
-
-## 🔐 Environment Configuration
-1. Copy the example file and provide the secured BOT endpoint:
-   ```bash
-   cp .env.example .env
-   ```
-2. Set `VITE_BOT_ENDPOINT` to the API that returns Bank of Thailand deposit rates (Cloudflare Worker, proxy, or internal service).
-
-If the variable is missing, runtime requests to the deposit rate service will throw an error to avoid accidentally calling the default demo endpoint.
-
-## 📦 Project Scripts
-| Command | Description |
-|---------|-------------|
-| `pnpm dev` | Start Vite dev server |
-| `pnpm build` | Type-check and produce production bundle in `dist/` |
-| `pnpm preview` | Serve the production build locally |
-| `pnpm lint` | ESLint with type-aware rules |
-| `pnpm typecheck` | Project references TypeScript check |
-| `pnpm test` / `pnpm test:watch` | Vitest + Testing Library |
-| `pnpm format` | Prettier formatting |
-
-## 🗂️ Project Structure
-```
-.
-├── src/
-│   ├── app/                 # App shell, providers, router, theme
-│   ├── assets/              # Static assets imported through Vite
-│   ├── domain/finance/      # Pure financial logic (decimal.js)
-│   ├── features/            # Calculator features (loan, deposits, time-value)
-│   ├── hooks/               # Shared React hooks
-│   ├── i18n/                # react-i18next configuration + locales
-│   ├── services/            # API and storage adapters
-│   ├── ui/                  # Reusable components and route-level pages
-│   ├── utils/               # Formatting + export helpers
-│   └── vite-env.d.ts        # Vite environment typings (VITE_BOT_ENDPOINT)
-├── public/                  # Static assets copied as-is
-├── docs/DesignDocument.md   # Consolidated design + implementation notes
-└── legacy-site/             # Original static HTML reference
+cp .env.example .env   # optional: the Bank of Thailand rate pickers
+pnpm dev               # http://localhost:5173
+pnpm check             # lint, types and tests
+pnpm build             # static site in dist/
 ```
 
-## 🧮 Calculator Notes
-- **Loan Planner** – Standard amortisation formula with chart/table exports.
-- **Savings Actual/365** – Handles 20,000 THB tax threshold, semiannual payouts, and clarity-first summaries.
-- **Fixed & Tiered Deposits** – BOT rate integration with CSV/XLSX exports per breakdown.
-- **Time Value** – Future Value schedule table and Net Present Value cash-flow comparison with export parity.
+Without `VITE_BOT_ENDPOINT` everything works except the "use a bank's rate" pickers, which show that rates are
+unavailable.
 
-Further implementation details are captured in `docs/DesignDocument.md`; the former per-feature markdown files are archived as pointers to that document.
+## How it works
 
-## 🌐 Internationalisation
-- Translations live under `src/i18n/locales/{en|th}/translation.json`.
-- `src/i18n/config.ts` lists supported languages; extend it when adding new locales.
-- Components use `react-i18next` hooks and dynamic keys for menu/item generation.
+- **Day count.** Deposits use Actual/365: the real number of nights between two dates, divided by 365, leap years
+  included. Fixed-deposit terms are counted from the first start date, so one opened on 31 January matures at each
+  month end instead of drifting.
+- **Savings tax.** Interest is credited on 30 June, 31 December and the withdrawal date. If a calendar year's interest
+  goes over ฿20,000, the bank withholds 15% of that whole year's interest, not just the part above the limit.
+- **Loans.** Each instalment is rounded to the satang and the last one absorbs the remainder, so the rows add up to the
+  total. Flat-rate loans charge interest on the original amount for the whole term, the way Thai car hire-purchase
+  works.
+- **Money maths** uses [decimal.js](https://github.com/MikeMcl/decimal.js), so ฿0.1 + ฿0.2 is ฿0.30.
+- **Bank rates** come from the Bank of Thailand's
+  [deposit-rate API](https://apiportal.bot.or.th/), through a small Cloudflare Worker at `rates.thitichotk.com` that
+  holds the API key and caches responses. The tables show each bank's own figures for the latest business day; real
+  offers can depend on the amount and the account's conditions.
 
-## ✅ Testing & Quality
-```bash
-pnpm lint
-pnpm typecheck
-pnpm test
-```
-- Domain logic has targeted Vitest suites (see `src/domain/finance/__tests__/`).
-- UI tests mock heavy chart components and focus on user flows.
-- Use `pnpm test --coverage` for lcov + text reports when needed.
+These are estimates at a fixed rate, not an offer or advice from a bank.
 
-## 🚢 Deployment
-- `pnpm build` outputs to `dist/` with the correct `base` for GitHub Pages (`/basic-financial-calculator/`).
-- The dedicated workflow in `.github/workflows/deploy.yml` deploys `dist` on pushes to `main`.
-- Router uses `HashRouter`, so no additional 404 handling is required.
-- If the repository name changes, update `repoBase` in `vite.config.ts` and redeploy.
+| Path | Role |
+|---|---|
+| `src/domain/finance/` | The calculations (loan, savings, deposits, time value, Bangkok dates) and their Vitest tests |
+| `src/pages/` | One page per calculator, plus home, about and not-found |
+| `src/ui/` | The sentence blanks, answer, year chart, passbook, formula, bank-rate picker and layout |
+| `src/services/bot/` | The Bank of Thailand rates client |
+| `src/i18n/locales/` | Thai and English text |
+| `src/styles/` | The Money-Math design system (`tokens.css`, `components.css`) and the page layout |
 
-## 🤝 Contributing & Maintenance
-- Run `pnpm lint`, `pnpm typecheck`, and `pnpm test` before pushing changes.
-- Update dependencies with `pnpm update --interactive` and rerun quality checks.
-- See `docs/DesignDocument.md` for architectural guidance prior to introducing new calculators or modifying tax logic.
+Built with React 19, Vite, react-router, i18next and zustand. The chart is hand-written SVG, and the formulas are
+native MathML. It deploys to Cloudflare Pages on every push to `main`, and pull requests get a preview link.
 
-## 📄 License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+## Licence
 
----
-
-Need a quick summary for stakeholders? Export-ready tables and the Design Document provide the authoritative reference for implementation details and future enhancements.
+[MIT](LICENSE). Not affiliated with the Bank of Thailand or any bank.

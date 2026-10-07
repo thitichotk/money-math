@@ -1,0 +1,170 @@
+/* Money-Math tokens: "A sentence and a passbook"
+   You fill in the blanks of a plain Thai sentence; the answer is said back to you;
+   the schedule prints like a bank passbook. Ink for principal, red for interest.
+   Light by default; dark follows the OS or [data-theme]. Contrast ratios are measured against --bg. */
+
+
+:root {
+  color-scheme: light;
+
+  --bg: #F7F7F5;
+  --surface: #FFFFFF;             /* the passbook page */
+  --surface-warm: #EEF0EE;
+  --surface-hover: #F1F2F0;
+  --surface-active: #E9EDF2;
+  --blank: #E9EDF2;               /* the blanks in the sentence, ink 15.0:1 */
+
+  --fg: #15191E;                  /* 16.5:1 */
+  --fg-2: #353B42;
+  --muted: #5B626A;               /* 5.8:1 */
+  --meta: #C5CAD0;                /* passbook rules, non-text */
+  --fg-inverted: #FFFFFF;
+
+  /* The action is ink; colour is reserved for what money does */
+  --accent: #15191E;              /* white on it 17.7:1 */
+  --accent-on: #FFFFFF;
+  --accent-hover: #2A3038;
+  --accent-subtle: #E9EDF2;
+  --accent-border: #15191E;
+
+  --interest: #B03F26;            /* interest as text, 5.5:1 */
+  --principal: #2F5A99;           /* principal as text, 6.9:1 on white */
+
+  --border: #D8DCDF;
+  --border-soft: #E6E8EA;
+  --border-strong: #15191E;
+  --focus: #2F5A99;
+  --ring-focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--focus);
+
+  --success: #1E6B3E;
+  --success-subtle: #E1F0E6;
+  --warn: #8A5A00;
+  --warn-subtle: #FBF0D5;
+  --danger: #B03F26;
+  --danger-subtle: #FBE8E3;
+  --info: var(--principal);
+  --info-subtle: var(--blank);
+
+  /* Chart: principal vs interest, validated with the dataviz checker (light and dark) */
+  --chart-principal: #3B66A8;
+  --chart-interest: #C9542F;
+  --chart-grid: #E6E8EA;
+  --chart-axis: #5B626A;
+
+  --font-sans: "IBM Plex Sans Thai Looped", system-ui, sans-serif;
+  --font-display: var(--font-sans);
+  --font-mono: "Sometype Mono", ui-monospace, monospace;   /* the passbook print */
+
+  --font-scale: 1;
+  --text-xs: calc(12px * var(--font-scale));
+  --text-sm: calc(14px * var(--font-scale));
+  --text-base: calc(16px * var(--font-scale));
+  --text-lg: calc(19px * var(--font-scale));
+  --text-xl: calc(24px * var(--font-scale));
+  --text-2xl: calc(30px * var(--font-scale));
+  --text-sentence: calc(clamp(26px, 3.1vw, 40px) * var(--font-scale));
+  --text-answer: calc(clamp(52px, 7vw, 104px) * var(--font-scale));
+
+  --leading-body: 1.65;
+  --h1-tracking: 0;
+  --h2-tracking: 0;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-24: 96px;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+  --radius-control: var(--radius-pill);
+  --radius-card: var(--radius-md);
+  --control-h: 48px;
+  --btn-weight: 600;
+
+  --elev-flat: none;
+  --elev-raised: 0 1px 2px rgba(21, 25, 30, 0.06), 0 8px 24px rgba(21, 25, 30, 0.05);
+  --elev-modal: 0 20px 48px rgba(21, 25, 30, 0.18);
+
+  --motion-fast: 120ms;
+  --motion-base: 220ms;
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #121417;
+    --surface: #191C20;
+    --surface-warm: #1E2227;
+    --surface-hover: #1D2126;
+    --surface-active: #232830;
+    --blank: #232830;
+    --fg: #E8EBEE;
+    --fg-2: #C8CDD2;
+    --muted: #A1A9B2;
+    --meta: #353B43;
+    --fg-inverted: #121417;
+    --accent: #E8EBEE;
+    --accent-on: #121417;
+    --accent-hover: #FFFFFF;
+    --accent-subtle: #232830;
+    --interest: #F08A6A;
+    --principal: #8DB0E6;
+    --border: #2B3038;
+    --border-soft: #22262C;
+    --border-strong: #E8EBEE;
+    --focus: #8DB0E6;
+    --danger: #F08A6A;
+    --chart-principal: #4F7FC4;
+    --chart-interest: #C9603F;
+    --chart-grid: #262B32;
+    --chart-axis: #A1A9B2;
+    --elev-raised: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --elev-modal: 0 20px 48px rgba(0, 0, 0, 0.5);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121417;
+  --surface: #191C20;
+  --surface-warm: #1E2227;
+  --surface-hover: #1D2126;
+  --surface-active: #232830;
+  --blank: #232830;               /* text 12.4:1 */
+  --fg: #E8EBEE;                  /* 15.4:1 */
+  --fg-2: #C8CDD2;
+  --muted: #A1A9B2;               /* 7.8:1 */
+  --meta: #353B43;
+  --fg-inverted: #121417;
+  --accent: #E8EBEE;
+  --accent-on: #121417;
+  --accent-hover: #FFFFFF;
+  --accent-subtle: #232830;
+  --interest: #F08A6A;            /* 7.5:1 */
+  --principal: #8DB0E6;           /* 8.3:1 */
+  --border: #2B3038;
+  --border-soft: #22262C;
+  --border-strong: #E8EBEE;
+  --focus: #8DB0E6;
+  --danger: #F08A6A;
+  --chart-principal: #4F7FC4;
+  --chart-interest: #C9603F;
+  --chart-grid: #262B32;
+  --chart-axis: #A1A9B2;
+  --elev-raised: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --elev-modal: 0 20px 48px rgba(0, 0, 0, 0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --motion-fast: 0ms; --motion-base: 0ms; }
+}

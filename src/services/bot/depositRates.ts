@@ -147,7 +147,7 @@ type RawApiResponse = {
 };
 
 const datasetCache = new Map<string, BotDepositRateDataset>();
-let latestDataset: BotDepositRateDataset | null = null;
+let latestRequest: Promise<BotDepositRateDataset> | null = null;
 
 const normalizeRateRecord = (raw: RawDepositRate): BotDepositRateRecord => {
   const savingsMin = parseNumber(raw.saving_min);
@@ -193,83 +193,59 @@ const fetchDepositRates = async (start: string, end: string): Promise<BotDeposit
     return cached;
   }
 
-  try {
+  // A day with no data comes back as 200 with no records (weekends, holidays). Anything else
+  // that goes wrong is thrown, so the caller stops instead of walking back through every day.
   const response = await fetch(`${getBotEndpoint()}?start_period=${start}&end_period=${end}`);
+  if (!response.ok) {
+    throw new Error(`BOT deposit rates: HTTP ${response.status}`);
+  }
 
-    if (!response.ok) {
-      return null;
-    }
+  const data = (await response.json()) as RawApiResponse;
+  const rawRecords = data.result?.data?.data_detail ?? [];
 
-    const data = (await response.json()) as RawApiResponse;
-    const rawRecords = data.result?.data?.data_detail ?? [];
-
-    if (!rawRecords.length) {
-      return null;
-    }
-
-    const normalizedRecords = rawRecords.map(normalizeRateRecord);
-    const latestPeriod = normalizedRecords.reduce((latest, record) =>
-      record.period > latest ? record.period : latest,
-    normalizedRecords[0].period);
-    const filteredRecords = normalizedRecords.filter((record) => record.period === latestPeriod);
-
-    const dataset: BotDepositRateDataset = {
-      timestamp: data.result?.timestamp ?? null,
-      period: latestPeriod,
-      records: filteredRecords,
-    };
-
-    datasetCache.set(cacheKey, dataset);
-    return dataset;
-  } catch (error) {
-    console.error('Failed to fetch BOT deposit rates', error);
+  if (!rawRecords.length) {
     return null;
   }
+
+  const normalizedRecords = rawRecords.map(normalizeRateRecord);
+  const latestPeriod = normalizedRecords.reduce((latest, record) =>
+    record.period > latest ? record.period : latest,
+  normalizedRecords[0].period);
+  const filteredRecords = normalizedRecords.filter((record) => record.period === latestPeriod);
+
+  const dataset: BotDepositRateDataset = {
+    timestamp: data.result?.timestamp ?? null,
+    period: latestPeriod,
+    records: filteredRecords,
+  };
+
+  datasetCache.set(cacheKey, dataset);
+  return dataset;
 };
 
-export const getLatestBotDepositRates = async (): Promise<BotDepositRateDataset> => {
-  if (latestDataset) {
-    return latestDataset;
-  }
-
-  let attempts = 0;
+const findLatestBotDepositRates = async (): Promise<BotDepositRateDataset> => {
   let current = parseDate(getBangkokToday());
 
-  while (attempts <= MAX_LOOKBACK_DAYS) {
+  for (let attempts = 0; attempts <= MAX_LOOKBACK_DAYS; attempts += 1) {
     const dateString = formatDate(current);
     const dataset = await fetchDepositRates(dateString, dateString);
-
     if (dataset && dataset.records.length) {
-      latestDataset = dataset;
       return dataset;
     }
-
     current = toPreviousBusinessDay(current);
-    attempts += 1;
   }
 
   throw new Error('No BOT deposit rate data available for recent business days');
 };
 
+/** Every caller shares one request; a failed one is forgotten so the next page can try again. */
+export const getLatestBotDepositRates = (): Promise<BotDepositRateDataset> => {
+  latestRequest ??= findLatestBotDepositRates().catch((error: unknown) => {
+    latestRequest = null;
+    throw error;
+  });
+  return latestRequest;
+};
+
 export const getBotDepositRatesForDate = async (date: string): Promise<BotDepositRateDataset | null> =>
   fetchDepositRates(date, date);
-
-export const getLatestBotDate = async (): Promise<{ period: string; timestamp: string | null }> => {
-  const dataset = await getLatestBotDepositRates();
-  return { period: dataset.period, timestamp: dataset.timestamp };
-};
-
-export const groupRatesByBankType = (records: BotDepositRateRecord[]) => {
-  const map = new Map<string, { bankType: BotDepositRateRecord['bankType']; banks: BotDepositRateRecord[] }>();
-
-  records.forEach((record) => {
-    const key = `${record.bankType.en}|${record.bankType.th ?? ''}`;
-    if (!map.has(key)) {
-      map.set(key, { bankType: record.bankType, banks: [] });
-    }
-
-    map.get(key)?.banks.push(record);
-  });
-
-  return Array.from(map.values()).sort((a, b) => a.bankType.en.localeCompare(b.bankType.en));
-};
