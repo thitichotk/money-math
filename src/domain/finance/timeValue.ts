@@ -35,6 +35,30 @@ export type FutureValueResult = {
   schedule: FutureValueScheduleEntry[];
 };
 
+/** Root of f between lo and hi by bisection, or null when f doesn't change sign there. */
+export const findRate = (f: (rate: number) => number, lo: number, hi: number): number | null => {
+  let fLo = f(lo);
+  if (!Number.isFinite(fLo) || !Number.isFinite(f(hi)) || Math.sign(fLo) === Math.sign(f(hi))) return null;
+  for (let i = 0; i < 200; i += 1) {
+    const mid = (lo + hi) / 2;
+    const fMid = f(mid);
+    if (Math.abs(fMid) < 1e-9 || hi - lo < 1e-12) return mid;
+    if (Math.sign(fMid) === Math.sign(fLo)) {
+      lo = mid;
+      fLo = fMid;
+    } else {
+      hi = mid;
+    }
+  }
+  return (lo + hi) / 2;
+};
+
+const requireFinite = (value: Decimal.Value | undefined, label: string) => {
+  const decimal = new Decimal(value ?? 0);
+  if (!decimal.isFinite()) throw new Error(`${label} must be a number`);
+  return decimal;
+};
+
 const validateFutureValueInput = (input: FutureValueInput) => {
   if (input.totalPeriods <= 0) {
     throw new Error('Total periods must be greater than zero');
@@ -96,11 +120,12 @@ const buildFutureValueSchedule = (
 export const calculateFutureValue = (input: FutureValueInput): FutureValueResult => {
   validateFutureValueInput(input);
 
-  const presentValue = new Decimal(input.presentValue || 0);
+  const presentValue = requireFinite(input.presentValue, 'Present value');
   const periodsPerYear = COMPOUNDING_FREQUENCIES[input.compoundingFrequency];
-  const ratePerPeriod = new Decimal(input.annualRatePercent || 0).div(100).div(periodsPerYear);
+  const ratePerPeriod = requireFinite(input.annualRatePercent, 'Rate').div(100).div(periodsPerYear);
+  if (ratePerPeriod.lte(-1)) throw new Error('Rate per period must be above -100%');
   const totalPeriodsDecimal = new Decimal(input.totalPeriods);
-  const periodicContribution = new Decimal(input.recurringContribution || 0);
+  const periodicContribution = requireFinite(input.recurringContribution, 'Contribution');
   const contributionTiming: ContributionTiming = input.contributionTiming ?? 'end';
 
   const growthFactor = ratePerPeriod.plus(1).pow(totalPeriodsDecimal);
@@ -159,6 +184,8 @@ export type DiscountedCashFlow = {
 
 export type NetPresentValueResult = {
   npv: Decimal;
+  /** Annual internal rate of return in percent, or null when the cash flows never break even. */
+  irrPercent: number | null;
   ratePerPeriod: Decimal;
   discountedCashFlows: DiscountedCashFlow[];
   totalCashFlow: Decimal;
@@ -181,10 +208,12 @@ const validateNetPresentValueInput = (input: NetPresentValueInput) => {
 export const calculateNetPresentValue = (input: NetPresentValueInput): NetPresentValueResult => {
   validateNetPresentValueInput(input);
 
-  const initialInvestment = new Decimal(input.initialInvestment || 0);
-  const ratePerPeriod = new Decimal(input.discountRatePercent || 0)
+  const initialInvestment = requireFinite(input.initialInvestment, 'Initial investment');
+  const ratePerPeriod = requireFinite(input.discountRatePercent, 'Discount rate')
     .div(100)
     .div(input.periodsPerYear);
+  if (ratePerPeriod.lte(-1)) throw new Error('Rate per period must be above -100%');
+  input.cashFlows.forEach((cashFlow, index) => requireFinite(cashFlow, `Cash flow ${index + 1}`));
   const onePlusRate = ratePerPeriod.plus(1);
 
   const discountedCashFlows: DiscountedCashFlow[] = [
@@ -221,8 +250,16 @@ export const calculateNetPresentValue = (input: NetPresentValueInput): NetPresen
   const npv = discountedCashFlows.reduce((acc, entry) => acc.plus(entry.presentValue), new Decimal(0));
   const totalCashFlow = discountedCashFlows.reduce((acc, entry) => acc.plus(entry.cashFlow), new Decimal(0));
 
+  const flows = input.cashFlows.map((cashFlow) => new Decimal(cashFlow).toNumber());
+  const irrPerPeriod = findRate(
+    (r) => flows.reduce((sum, cf, i) => sum + cf / (1 + r) ** (i + 1), -initialInvestment.toNumber()),
+    -0.99,
+    10,
+  );
+
   return {
     npv,
+    irrPercent: irrPerPeriod == null ? null : irrPerPeriod * input.periodsPerYear * 100,
     ratePerPeriod,
     discountedCashFlows,
     totalCashFlow,

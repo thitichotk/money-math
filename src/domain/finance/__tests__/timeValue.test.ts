@@ -67,4 +67,20 @@ describe('calculateNetPresentValue', () => {
     expect(result.npv.toNumber()).toBeCloseTo(-600, 5);
     expect(result.discountedCashFlows[0].presentValue.toNumber()).toBe(-1000);
   });
+
+  it('finds the internal rate of return, and none when the flows never break even', () => {
+    const result = calculateNetPresentValue({ initialInvestment: 1000, discountRatePercent: 5, periodsPerYear: 1, cashFlows: [1100] });
+    expect(result.irrPercent).toBeCloseTo(10, 6);
+    const never = calculateNetPresentValue({ initialInvestment: 1000, discountRatePercent: 5, periodsPerYear: 1, cashFlows: [-10, -10] });
+    expect(never.irrPercent).toBeNull();
+  });
+
+  it('rejects NaN and rates at or below -100% per period', () => {
+    expect(() =>
+      calculateFutureValue({ presentValue: Number.NaN, annualRatePercent: 5, totalPeriods: 10, compoundingFrequency: 'annually' }),
+    ).toThrow(/must be a number/);
+    expect(() =>
+      calculateFutureValue({ presentValue: 100, annualRatePercent: -100, totalPeriods: 10, compoundingFrequency: 'annually' }),
+    ).toThrow(/above -100%/);
+  });
 });

@@ -1,5 +1,14 @@
 import Decimal from 'decimal.js';
 
+import { addDays, daysBetween, formatDate, isSavingsPayoutDate, parseDate } from './dates';
+
+// A Thai savings account, day by day:
+// - interest accrues every night on that day's balance, Actual/365;
+// - it is credited on 30 June and 31 December, and on the end date (closing the account);
+// - the first ฿20,000 of interest in a calendar year is tax-free. Once the year's interest passes
+//   ฿20,000, 15% is withheld on the whole year's interest, so the payout that crosses the line
+//   also catches up the tax on everything credited earlier that year.
+
 type TimelineEventType = 'deposit' | 'withdraw';
 
 export type SavingsTimelineEvent = {
@@ -9,6 +18,7 @@ export type SavingsTimelineEvent = {
 };
 
 export type WithholdingTaxConfig = {
+  /** Withhold on every credit regardless of the ฿20,000 rule (accounts that don't qualify). */
   enabled: boolean;
   rate: number;
 };
@@ -17,50 +27,37 @@ export type SavingsCalculatorInput = {
   principalStart: number;
   annualRatePct: number;
   startDate: string;
+  /** The day the money comes out. It earns no interest itself. */
   endDate: string;
   events?: SavingsTimelineEvent[];
   apply20kRule?: boolean;
-  overrideKeepCompounding?: boolean;
   withholdingTax?: WithholdingTaxConfig;
-  timezone?: 'Asia/Bangkok';
 };
 
 export type SavingsPayout = {
   date: string;
+  kind: 'payout' | 'closing';
   grossInterest: number;
   tax: number;
   netInterest: number;
   balanceAfterPayout: number;
-  // Clarity-first outputs
   cumulativeYtdGross: number;
   remainingToThreshold: number;
+  exceededBy: number;
   thresholdCrossed: boolean;
-  taxStatus: 'none' | 'threshold-crossed' | 'above-threshold';
-  interestMethod: 'compound' | 'simple';
-  // Advanced details (optional display)
-  taxableAmountThisPayout?: number;
-  taxWithheldThisPayout?: number;
-  runningYtdTax?: number;
 };
 
 export type SavingsYearSummary = {
   year: number;
-  mode: 'CompoundAtPayout' | 'SimpleDueTo20k';
   grossInterest: number;
   tax: number;
   netInterest: number;
   closingBalance: number;
-};
-
-export type SavingsStep = {
-  fromDate: string;
-  toDate: string;
-  days: number;
-  principal: number;
-  grossInterest: number;
+  overThreshold: boolean;
 };
 
 export type SavingsCalculatorResult = {
+  days: number;
   endingBalance: number;
   totalContributions: number;
   grossInterestTotal: number;
@@ -68,441 +65,112 @@ export type SavingsCalculatorResult = {
   netInterestTotal: number;
   payouts: SavingsPayout[];
   yearSummaries: SavingsYearSummary[];
-  steps: SavingsStep[];
 };
 
-const DEFAULT_TIME_ZONE = 'Asia/Bangkok';
+export const TAX_FREE_INTEREST = 20_000;
+const THRESHOLD = new Decimal(TAX_FREE_INTEREST);
 const DAYS_IN_YEAR = new Decimal(365);
-const TWENTY_K_THRESHOLD = new Decimal(20_000);
-
-const formatDate = (date: Date) => {
-  const y = date.getUTCFullYear();
-  const m = (date.getUTCMonth() + 1).toString().padStart(2, '0');
-  const d = date.getUTCDate().toString().padStart(2, '0');
-  return `${y}-${m}-${d}`;
-};
-
-const parseDate = (value: string): Date => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    throw new Error('Date must be in YYYY-MM-DD format');
-  }
-
-  const [yearString, monthString, dayString] = value.split('-');
-  const year = Number(yearString);
-  const monthIndex = Number(monthString) - 1;
-  const day = Number(dayString);
-
-  const date = new Date(Date.UTC(year, monthIndex, day));
-
-  if (
-    Number.isNaN(date.getTime()) ||
-    date.getUTCFullYear() !== year ||
-    date.getUTCMonth() !== monthIndex ||
-    date.getUTCDate() !== day
-  ) {
-    throw new Error(`Invalid date: ${value}`);
-  }
-
-  return date;
-};
-
-const addDays = (date: Date, days: number) => {
-  const result = new Date(date.getTime());
-  result.setUTCDate(result.getUTCDate() + days);
-  return result;
-};
-
-const compareDates = (a: Date, b: Date) => {
-  const diff = a.getTime() - b.getTime();
-  if (diff === 0) return 0;
-  return diff > 0 ? 1 : -1;
-};
-
-const isSameDay = (a: Date, b: Date) => compareDates(a, b) === 0;
-
-const startOfYear = (date: Date) => new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-
-const endOfYear = (date: Date) => new Date(Date.UTC(date.getUTCFullYear(), 11, 31));
-
-const isPayoutDate = (date: Date) => {
-  const month = date.getUTCMonth() + 1;
-  const day = date.getUTCDate();
-  return (month === 6 && day === 30) || (month === 12 && day === 31);
-};
-
-const getUtcMonthDay = (date: Date) => ({
-  month: date.getUTCMonth() + 1,
-  day: date.getUTCDate(),
-});
-
-const isSemiannualAccrualDay = (date: Date) => {
-  const { month, day } = getUtcMonthDay(date);
-  if (month < 6) return true;
-  if (month === 6) return day <= 30;
-  if (month < 12) return true;
-  if (month === 12) return day <= 30;
-  return false;
-};
-
-const roundMoney = (value: Decimal) => value.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-
-type ProcessedEvent = {
-  date: Date;
-  type: TimelineEventType;
-  amount: Decimal;
-};
-
-type YearMode = 'CompoundAtPayout' | 'SimpleDueTo20k';
-
-type YearContext = {
-  mode: YearMode;
-  gross: Decimal;
-  tax: Decimal;
-  netPendingCredit: Decimal;
-  cumulativeGrossInterest: Decimal; // Track cumulative interest for the year
-};
-
-// No longer need to estimate year interest in advance - we'll determine mode dynamically at each payout
-
-const buildSteps = (
-  steps: SavingsStep[],
-  periodStart: Date,
-  periodEnd: Date,
-  principal: Decimal,
-  grossInterest: Decimal,
-) => {
-  if (periodStart.getTime() > periodEnd.getTime()) {
-    return;
-  }
-
-  const millisPerDay = 24 * 60 * 60 * 1000;
-  const days = Math.round((periodEnd.getTime() - periodStart.getTime()) / millisPerDay) + 1;
-
-  steps.push({
-    fromDate: formatDate(periodStart),
-    toDate: formatDate(periodEnd),
-    days: Math.max(days, 1),
-    principal: roundMoney(principal).toNumber(),
-    grossInterest: roundMoney(grossInterest).toNumber(),
-  });
-};
+const money = (value: Decimal) => value.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
 
 export const computeSavingsDailyActual365 = (input: SavingsCalculatorInput): SavingsCalculatorResult => {
-  const {
-    principalStart,
-    annualRatePct,
-    startDate: startDateInput,
-    endDate: endDateInput,
-    events: rawEvents = [],
-    apply20kRule = true,
-    overrideKeepCompounding = false,
-    withholdingTax = { enabled: false, rate: 0 },
-    timezone = DEFAULT_TIME_ZONE,
-  } = input;
+  const principal = new Decimal(input.principalStart);
+  const rate = new Decimal(input.annualRatePct);
+  if (!principal.isFinite() || principal.isNegative()) throw new Error('Starting principal cannot be negative');
+  if (!rate.isFinite() || rate.isNegative()) throw new Error('Annual rate cannot be negative');
 
-  if (timezone !== DEFAULT_TIME_ZONE) {
-    throw new Error('Only Asia/Bangkok timezone is supported');
-  }
+  const start = parseDate(input.startDate);
+  const end = parseDate(input.endDate);
+  if (start.getTime() > end.getTime()) throw new Error('End date must be on or after start date');
 
-  const principal = new Decimal(principalStart);
-  if (principal.isNegative()) {
-    throw new Error('Starting principal cannot be negative');
-  }
+  const taxRate = new Decimal(input.withholdingTax?.rate ?? 0.15);
+  if (!taxRate.isFinite() || taxRate.isNegative()) throw new Error('Withholding tax rate cannot be negative');
+  const alwaysWithhold = Boolean(input.withholdingTax?.enabled);
+  const apply20kRule = input.apply20kRule !== false;
 
-  const ratePercent = new Decimal(annualRatePct);
-  if (ratePercent.isNegative()) {
-    throw new Error('Annual rate cannot be negative');
-  }
-
-  const startDate = parseDate(startDateInput);
-  const endDate = parseDate(endDateInput);
-
-  if (startDate.getTime() > endDate.getTime()) {
-    throw new Error('End date must be on or after start date');
-  }
-
-  const processedEvents: ProcessedEvent[] = rawEvents
+  const events = (input.events ?? [])
     .map((event) => {
-      const amount = new Decimal(event.amount);
-      if (!Number.isFinite(event.amount)) {
-        throw new Error('Event amount must be a finite number');
-      }
-      if (amount.lte(0)) {
-        throw new Error('Event amount must be positive');
-      }
+      if (!Number.isFinite(event.amount) || event.amount <= 0) throw new Error('Event amount must be positive');
       const date = parseDate(event.date);
-      if (compareDates(date, startDate) < 0 || compareDates(date, endDate) > 0) {
-        throw new Error('Event date must be within the calculation range');
-      }
-      if (event.type !== 'deposit' && event.type !== 'withdraw') {
-        throw new Error('Event type must be deposit or withdraw');
-      }
-      return { date, type: event.type, amount } satisfies ProcessedEvent;
+      if (date < start || date > end) throw new Error('Event date must be within the calculation range');
+      return { ...event, time: date.getTime(), amount: new Decimal(event.amount) };
     })
-    .sort((a, b) => {
-      const cmp = compareDates(a.date, b.date);
-      if (cmp !== 0) return cmp;
-      if (a.type === b.type) return 0;
-      return a.type === 'deposit' ? -1 : 1;
-    });
+    // Same day: deposits first, so a deposit can fund a withdrawal.
+    .sort((a, b) => a.time - b.time || (a.type === b.type ? 0 : a.type === 'deposit' ? -1 : 1));
 
-  for (let i = 1; i < processedEvents.length; i += 1) {
-    const prev = processedEvents[i - 1];
-    const current = processedEvents[i];
-    if (compareDates(prev.date, current.date) === 0 && prev.type === 'withdraw' && current.type === 'deposit') {
-      throw new Error('Deposits must be applied before withdrawals on the same day');
-    }
-  }
-
-  const ratePerDay = ratePercent.div(100).div(DAYS_IN_YEAR);
-  const taxRate = withholdingTax.enabled ? new Decimal(withholdingTax.rate) : new Decimal(0);
-
-  if (withholdingTax.enabled && taxRate.lessThan(0)) {
-    throw new Error('Withholding tax rate cannot be negative');
-  }
-
-  const payouts: SavingsPayout[] = [];
-  const yearSummaries: SavingsYearSummary[] = [];
-  const steps: SavingsStep[] = [];
-
+  const dailyRate = rate.div(100).div(DAYS_IN_YEAR);
   let balance = principal;
-  let totalContributions = principal;
-  let totalGrossInterest = new Decimal(0);
-  let totalTax = new Decimal(0);
-
-  let currentDate = new Date(startDate.getTime());
-  let pendingInterest = new Decimal(0);
+  let contributions = principal;
+  let accrued = new Decimal(0);
   let eventIndex = 0;
+  const payouts: SavingsPayout[] = [];
+  const years = new Map<number, { gross: Decimal; tax: Decimal; closing: Decimal }>();
 
-  let currentYear = currentDate.getUTCFullYear();
-  let yearEnd = endOfYear(currentDate);
-  if (yearEnd.getTime() > endDate.getTime()) {
-    yearEnd = new Date(endDate.getTime());
-  }
+  const credit = (date: Date, kind: SavingsPayout['kind']) => {
+    const gross = money(accrued);
+    accrued = new Decimal(0);
+    const year = years.get(date.getUTCFullYear()) ?? { gross: new Decimal(0), tax: new Decimal(0), closing: balance };
+    const before = year.gross;
+    year.gross = year.gross.plus(gross);
 
-  let yearContext: YearContext = {
-    mode: 'CompoundAtPayout', // Start with compound mode, will switch dynamically if threshold is crossed
-    gross: new Decimal(0),
-    tax: new Decimal(0),
-    netPendingCredit: new Decimal(0),
-    cumulativeGrossInterest: new Decimal(0),
-  };
+    let tax = new Decimal(0);
+    if (alwaysWithhold) tax = money(gross.times(taxRate));
+    else if (apply20kRule && year.gross.gt(THRESHOLD)) tax = money(year.gross.times(taxRate)).minus(year.tax);
 
-  let periodStart = new Date(currentDate.getTime());
-  let periodInterest = new Decimal(0);
-  let periodPrincipalSnapshot = balance;
-  let lastProcessedDate = new Date(currentDate.getTime());
-
-  const applyEvent = (event: ProcessedEvent) => {
-    if (event.type === 'deposit') {
-      balance = balance.plus(event.amount);
-      totalContributions = totalContributions.plus(event.amount);
-    } else {
-      balance = balance.minus(event.amount);
-      totalContributions = totalContributions.minus(event.amount);
-      if (balance.isNegative()) {
-        throw new Error('Withdrawal events cannot reduce balance below zero');
-      }
-    }
-  };
-
-  const finalizePayout = (creditDate: Date, accrualEndDate: Date) => {
-    const grossRounded = roundMoney(pendingInterest);
-    
-    // Update cumulative gross interest for the year
-    const previousCumulative = yearContext.cumulativeGrossInterest;
-    const newCumulative = previousCumulative.plus(grossRounded);
-    yearContext.cumulativeGrossInterest = newCumulative;
-    
-    let taxRounded = new Decimal(0);
-    let netRounded = grossRounded;
-    let taxableAmount = new Decimal(0);
-    
-    // Determine if we need to apply tax based on cumulative interest or explicit config
-    let shouldCompound = true;
-    let taxStatus: 'none' | 'threshold-crossed' | 'above-threshold' = 'none';
-    let thresholdCrossed = false;
-    
-    if (!taxRate.isZero()) {
-      // Explicit withholding tax enabled - always apply it
-      taxableAmount = grossRounded;
-      taxRounded = roundMoney(grossRounded.times(taxRate));
-      netRounded = grossRounded.minus(taxRounded);
-      // Compound unless overridden by 20k rule below
-    }
-    
-    if (apply20kRule && !overrideKeepCompounding) {
-      if (previousCumulative.lessThanOrEqualTo(TWENTY_K_THRESHOLD) && newCumulative.greaterThan(TWENTY_K_THRESHOLD)) {
-        // Just crossed the threshold
-        // Withhold so that total withheld equals 15% of the entire YTD gross interest
-        // Formula: tax_this_payout = 0.15 * YTD_gross_after - YTD_tax_already_withheld
-        thresholdCrossed = true;
-        taxStatus = 'threshold-crossed';
-        if (taxRate.isZero()) {
-          const targetTotalTax = newCumulative.times(0.15);
-          const taxThisPayout = targetTotalTax.minus(yearContext.tax);
-          taxableAmount = newCumulative; // For display purposes, show entire YTD as taxable base
-          taxRounded = roundMoney(taxThisPayout);
-          netRounded = grossRounded.minus(taxRounded);
-        }
-        
-        // Switch to simple interest mode for rest of year
-        yearContext.mode = 'SimpleDueTo20k';
-        shouldCompound = false;
-      } else if (previousCumulative.greaterThan(TWENTY_K_THRESHOLD)) {
-        // Already above threshold - apply 15% tax on full gross amount
-        taxStatus = 'above-threshold';
-        if (taxRate.isZero()) {
-          taxableAmount = grossRounded;
-          taxRounded = roundMoney(grossRounded.times(0.15));
-          netRounded = grossRounded.minus(taxRounded);
-        }
-        yearContext.mode = 'SimpleDueTo20k';
-        shouldCompound = false;
-      } else {
-        // Still below threshold - no additional tax beyond explicit config
-        taxStatus = 'none';
-        yearContext.mode = 'CompoundAtPayout';
-        shouldCompound = true;
-      }
-    }
-
-    if (periodStart.getTime() <= accrualEndDate.getTime()) {
-      buildSteps(steps, periodStart, accrualEndDate, periodPrincipalSnapshot, periodInterest);
-    }
-
-    // Apply interest based on compounding decision
-    if (shouldCompound) {
-      balance = balance.plus(netRounded);
-    } else {
-      yearContext.netPendingCredit = yearContext.netPendingCredit.plus(netRounded);
-    }
-
-    totalTax = totalTax.plus(taxRounded);
-    yearContext.tax = yearContext.tax.plus(taxRounded);
-    yearContext.gross = yearContext.gross.plus(grossRounded);
-
-    // Calculate remaining to threshold
-    const remainingToThreshold = newCumulative.lessThan(TWENTY_K_THRESHOLD)
-      ? TWENTY_K_THRESHOLD.minus(newCumulative)
-      : new Decimal(0);
+    year.tax = year.tax.plus(tax);
+    const net = gross.minus(tax);
+    balance = balance.plus(net);
+    year.closing = balance;
+    years.set(date.getUTCFullYear(), year);
 
     payouts.push({
-      date: formatDate(creditDate),
-      grossInterest: grossRounded.toNumber(),
-      tax: taxRounded.toNumber(),
-      netInterest: netRounded.toNumber(),
-      balanceAfterPayout: roundMoney(balance).toNumber(),
-      cumulativeYtdGross: roundMoney(newCumulative).toNumber(),
-      remainingToThreshold: roundMoney(remainingToThreshold).toNumber(),
-      thresholdCrossed,
-      taxStatus,
-      interestMethod: shouldCompound ? 'compound' : 'simple',
-      taxableAmountThisPayout: roundMoney(taxableAmount).toNumber(),
-      taxWithheldThisPayout: taxRounded.toNumber(),
-      runningYtdTax: roundMoney(yearContext.tax).toNumber(),
+      date: formatDate(date),
+      kind,
+      grossInterest: gross.toNumber(),
+      tax: tax.toNumber(),
+      netInterest: net.toNumber(),
+      balanceAfterPayout: money(balance).toNumber(),
+      cumulativeYtdGross: year.gross.toNumber(),
+      remainingToThreshold: Decimal.max(0, THRESHOLD.minus(year.gross)).toNumber(),
+      exceededBy: Decimal.max(0, year.gross.minus(THRESHOLD)).toNumber(),
+      thresholdCrossed: before.lte(THRESHOLD) && year.gross.gt(THRESHOLD),
     });
-
-    pendingInterest = new Decimal(0);
-    periodInterest = new Decimal(0);
-    periodStart = addDays(accrualEndDate, 1);
-    periodPrincipalSnapshot = balance;
   };
 
-  const finalizeYear = (date: Date) => {
-    if (yearContext.mode === 'SimpleDueTo20k') {
-      balance = balance.plus(yearContext.netPendingCredit);
-      yearContext.netPendingCredit = new Decimal(0);
+  for (let day = start; day.getTime() <= end.getTime(); day = addDays(day, 1)) {
+    for (; eventIndex < events.length && events[eventIndex].time === day.getTime(); eventIndex += 1) {
+      const event = events[eventIndex];
+      const sign = event.type === 'deposit' ? 1 : -1;
+      balance = balance.plus(event.amount.times(sign));
+      contributions = contributions.plus(event.amount.times(sign));
+      if (balance.isNegative()) throw new Error('Withdrawal events cannot reduce balance below zero');
     }
-
-    const grossRounded = roundMoney(yearContext.gross);
-    const taxRounded = roundMoney(yearContext.tax);
-
-    yearSummaries.push({
-      year: currentYear,
-      mode: yearContext.mode,
-      grossInterest: grossRounded.toNumber(),
-      tax: taxRounded.toNumber(),
-      netInterest: roundMoney(grossRounded.minus(taxRounded)).toNumber(),
-      closingBalance: roundMoney(balance).toNumber(),
-    });
-
-    currentYear += 1;
-
-    if (currentYear <= endDate.getUTCFullYear()) {
-      const yearStart = startOfYear(date);
-      let yearRangeEnd = endOfYear(yearStart);
-      if (yearRangeEnd.getTime() > endDate.getTime()) {
-        yearRangeEnd = new Date(endDate.getTime());
-      }
-
-      yearContext = {
-        mode: 'CompoundAtPayout', // Start each new year in compound mode
-        gross: new Decimal(0),
-        tax: new Decimal(0),
-        netPendingCredit: new Decimal(0),
-        cumulativeGrossInterest: new Decimal(0),
-      };
-      yearEnd = yearRangeEnd;
+    if (day.getTime() === end.getTime()) {
+      if (!accrued.isZero()) credit(day, 'closing'); // whatever accrued since the last payout
+      break;
     }
-  };
-
-  while (currentDate.getTime() <= endDate.getTime()) {
-    while (eventIndex < processedEvents.length && isSameDay(processedEvents[eventIndex].date, currentDate)) {
-      buildSteps(steps, periodStart, addDays(currentDate, -1), periodPrincipalSnapshot, periodInterest);
-      periodStart = new Date(currentDate.getTime());
-      periodInterest = new Decimal(0);
-
-      applyEvent(processedEvents[eventIndex]);
-      periodPrincipalSnapshot = balance;
-      eventIndex += 1;
-    }
-
-    const isPayoutToday =
-      isPayoutDate(currentDate) &&
-      compareDates(currentDate, startDate) >= 0 &&
-      compareDates(currentDate, endDate) <= 0;
-
-    if (isPayoutToday && (pendingInterest.greaterThan(0) || periodStart.getTime() < currentDate.getTime())) {
-      const accrualEndDate = addDays(currentDate, -1);
-      finalizePayout(currentDate, accrualEndDate);
-    }
-
-    const shouldAccrueInterest =
-      !ratePerDay.isZero() &&
-      isSemiannualAccrualDay(currentDate) &&
-      compareDates(currentDate, endDate) <= 0;
-
-    const interestForDay = shouldAccrueInterest ? balance.times(ratePerDay) : new Decimal(0);
-    pendingInterest = pendingInterest.plus(interestForDay);
-    totalGrossInterest = totalGrossInterest.plus(interestForDay);
-    periodInterest = periodInterest.plus(interestForDay);
-
-    const isLastDayOfYear = isSameDay(currentDate, endOfYear(currentDate));
-    if (isLastDayOfYear || isSameDay(currentDate, endDate)) {
-      finalizeYear(currentDate);
-    }
-
-    lastProcessedDate = new Date(currentDate.getTime());
-    currentDate = addDays(currentDate, 1);
+    accrued = accrued.plus(balance.times(dailyRate));
+    if (isSavingsPayoutDate(day)) credit(day, 'payout');
   }
 
-  if (periodInterest.greaterThan(0)) {
-    buildSteps(steps, periodStart, lastProcessedDate, periodPrincipalSnapshot, periodInterest);
-  }
-
-  const remainingGross = roundMoney(totalGrossInterest);
-  const taxRounded = roundMoney(totalTax);
-  const netTotalRounded = roundMoney(remainingGross.minus(taxRounded));
+  const yearSummaries = [...years.entries()].map(([year, totals]) => ({
+    year,
+    grossInterest: totals.gross.toNumber(),
+    tax: totals.tax.toNumber(),
+    netInterest: totals.gross.minus(totals.tax).toNumber(),
+    closingBalance: money(totals.closing).toNumber(),
+    overThreshold: totals.gross.gt(THRESHOLD),
+  }));
+  const gross = payouts.reduce((sum, p) => sum.plus(p.grossInterest), new Decimal(0));
+  const tax = payouts.reduce((sum, p) => sum.plus(p.tax), new Decimal(0));
 
   return {
-    endingBalance: roundMoney(balance).toNumber(),
-    totalContributions: roundMoney(totalContributions).toNumber(),
-    grossInterestTotal: remainingGross.toNumber(),
-    withholdingTaxTotal: taxRounded.toNumber(),
-    netInterestTotal: netTotalRounded.toNumber(),
+    days: daysBetween(start, end),
+    endingBalance: money(balance).toNumber(),
+    totalContributions: money(contributions).toNumber(),
+    grossInterestTotal: gross.toNumber(),
+    withholdingTaxTotal: tax.toNumber(),
+    netInterestTotal: gross.minus(tax).toNumber(),
     payouts,
     yearSummaries,
-    steps,
   };
 };

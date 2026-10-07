@@ -194,7 +194,7 @@ const fetchDepositRates = async (start: string, end: string): Promise<BotDeposit
   }
 
   try {
-  const response = await fetch(`${getBotEndpoint()}?start_period=${start}&end_period=${end}`);
+    const response = await fetch(`${getBotEndpoint()}?start_period=${start}&end_period=${end}`);
 
     if (!response.ok) {
       return null;
@@ -253,23 +253,3 @@ export const getLatestBotDepositRates = async (): Promise<BotDepositRateDataset>
 
 export const getBotDepositRatesForDate = async (date: string): Promise<BotDepositRateDataset | null> =>
   fetchDepositRates(date, date);
-
-export const getLatestBotDate = async (): Promise<{ period: string; timestamp: string | null }> => {
-  const dataset = await getLatestBotDepositRates();
-  return { period: dataset.period, timestamp: dataset.timestamp };
-};
-
-export const groupRatesByBankType = (records: BotDepositRateRecord[]) => {
-  const map = new Map<string, { bankType: BotDepositRateRecord['bankType']; banks: BotDepositRateRecord[] }>();
-
-  records.forEach((record) => {
-    const key = `${record.bankType.en}|${record.bankType.th ?? ''}`;
-    if (!map.has(key)) {
-      map.set(key, { bankType: record.bankType, banks: [] });
-    }
-
-    map.get(key)?.banks.push(record);
-  });
-
-  return Array.from(map.values()).sort((a, b) => a.bankType.en.localeCompare(b.bankType.en));
-};

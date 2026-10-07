@@ -1,100 +1,36 @@
 import { describe, expect, it } from 'vitest';
 
-import { calculateFixedDeposit, calculateSavingsDeposit, calculateTieredDeposit } from '../deposit';
-
-const toNumber = (value: number, precision = 6) => Number(value.toFixed(precision));
+import { calculateFixedDeposit, calculateTieredDeposit } from '../deposit';
 
 describe('calculateFixedDeposit', () => {
-  it('matches simple interest for a 12 month term without rollover', () => {
-    const result = calculateFixedDeposit({
-      principal: 100_000,
-      annualRatePercent: 1.8,
-      termMonths: 12,
-      termCount: 1,
-      startDate: '2024-01-01',
-    });
+  const base = { principal: 100_000, annualRatePercent: 1.8, termMonths: 12, startDate: '2024-01-01', termCount: 1 };
 
-    expect(toNumber(result.grossInterest.toNumber(), 4)).toBeCloseTo(1_795.08, 4);
-    expect(toNumber(result.netInterest.toNumber(), 4)).toBeCloseTo(1_795.08, 4);
-    expect(toNumber(result.endingBalance.toNumber(), 4)).toBeCloseTo(101_795.08, 4);
+  it('pays interest for every night until maturity, Actual/365', () => {
+    // 2024-01-01 to 2025-01-01 is 366 nights in a leap year.
+    const result = calculateFixedDeposit({ ...base, withholdingTax: false });
+    expect(result.schedule[0].days).toBe(366);
+    expect(result.grossInterest.toNumber()).toBe(1804.93);
+    expect(result.endingBalance.toNumber()).toBe(101_804.93);
+    expect(result.maturityDate).toBe('2025-01-01');
   });
 
-  it('compounding semi-annually yields higher net interest than single annual term', () => {
-    const singleTerm = calculateFixedDeposit({
-      principal: 50_000,
-      annualRatePercent: 2.4,
-      termMonths: 12,
-      termCount: 1,
-      startDate: '2024-01-01',
-    });
-
-    const twoTerms = calculateFixedDeposit({
-      principal: 50_000,
-      annualRatePercent: 2.4,
-      termMonths: 6,
-      termCount: 2,
-      startDate: '2024-01-01',
-    });
-
-    expect(twoTerms.netInterest.toNumber()).toBeGreaterThan(singleTerm.netInterest.toNumber());
-    expect(twoTerms.netInterest.toNumber()).toBeCloseTo(1_203.88, 4);
-    expect(twoTerms.endingBalance.toNumber()).toBeCloseTo(51_203.88, 4);
+  it('withholds 15% by default', () => {
+    const result = calculateFixedDeposit(base);
+    expect(result.taxAmount.toNumber()).toBe(270.74);
+    expect(result.netInterest.toNumber()).toBe(1534.19);
   });
 
-  it('applies withholding tax before compounding', () => {
-    const taxed = calculateFixedDeposit({
-      principal: 100_000,
-      annualRatePercent: 1.8,
-      termMonths: 12,
-      termCount: 1,
-      startDate: '2024-01-01',
-      withholdingTax: true,
-    });
-
-    expect(toNumber(taxed.grossInterest.toNumber(), 2)).toBeCloseTo(1_795.08, 2);
-    expect(toNumber(taxed.taxAmount.toNumber(), 2)).toBeCloseTo(269.26, 2);
-    expect(toNumber(taxed.netInterest.toNumber(), 2)).toBeCloseTo(1_525.82, 2);
-    expect(toNumber(taxed.endingBalance.toNumber(), 2)).toBeCloseTo(101_525.82, 2);
+  it('keeps month-end maturities from drifting', () => {
+    const result = calculateFixedDeposit({ ...base, startDate: '2025-01-31', termMonths: 1, termCount: 3 });
+    expect(result.schedule.map((term) => term.endDate)).toEqual(['2025-02-28', '2025-03-31', '2025-04-30']);
+    expect(result.schedule.map((term) => term.days)).toEqual([28, 31, 30]);
   });
 
-  it('uses actual deposit days for each rollover period', () => {
-    const result = calculateFixedDeposit({
-      principal: 100_000,
-      annualRatePercent: 2.4,
-      termMonths: 6,
-      termCount: 2,
-      startDate: '2023-01-01',
-      compoundOnRollover: false,
-    });
-
-    expect(result.schedule).toHaveLength(2);
-
-    const firstTerm = result.schedule[0];
-    const secondTerm = result.schedule[1];
-
-    expect(firstTerm?.grossInterest.toNumber()).toBeCloseTo(1_183.56, 2);
-    expect(secondTerm?.grossInterest.toNumber()).toBeCloseTo(1_209.86, 2);
-    expect(result.grossInterest.toNumber()).toBeCloseTo(2_393.42, 2);
-    expect(result.netInterest.toNumber()).toBeCloseTo(2_393.42, 2);
-  });
-});
-
-describe('calculateSavingsDeposit (daily accrual)', () => {
-  it('excludes the initial deposit day from interest accrual', () => {
-    const result = calculateSavingsDeposit({
-      principal: 10_000,
-      annualRatePercent: 2,
-      startDate: '2023-01-01',
-      endDate: '2023-12-31',
-      accrualMode: 'daily',
-      compoundOnCredit: true,
-      withholdingTax: false,
-    });
-
-    const january = result.schedule.find((entry) => entry.date === '2023-01-31');
-
-    expect(january).toBeDefined();
-    expect(january?.interestCredited.toNumber()).toBeCloseTo(16.99, 2);
+  it('compounds net interest on rollover', () => {
+    const rolled = calculateFixedDeposit({ ...base, termMonths: 6, termCount: 2, withholdingTax: false });
+    const single = calculateFixedDeposit({ ...base, withholdingTax: false });
+    expect(rolled.netInterest.toNumber()).toBeGreaterThan(single.netInterest.toNumber());
+    expect(rolled.schedule[1].principal.toNumber()).toBe(100_000 + rolled.schedule[0].netInterest.toNumber());
   });
 });
 
@@ -217,5 +153,35 @@ describe('calculateTieredDeposit', () => {
         withholdingTax: false,
       });
     }).toThrow('Minimum balance must be less than maximum balance');
+  });
+
+  it('pays the top rate on money above the top tier', () => {
+    const result = calculateTieredDeposit({
+      principal: 1_000_000,
+      startDate: '2024-01-01',
+      endDate: '2024-12-31',
+      tiers: [
+        { minBalance: 0, maxBalance: 50_000, rate: 0.5 },
+        { minBalance: 50_000, maxBalance: 100_000, rate: 1 },
+        { minBalance: 100_000, maxBalance: 500_000, rate: 1.5 },
+      ],
+      withholdingTax: false,
+    });
+    expect(result.tierBreakdown[2].balanceInTier).toBe(900_000);
+    expect(result.grossInterest).toBe(250 + 500 + 13_500);
+  });
+
+  it('rejects gaps between tiers', () => {
+    expect(() =>
+      calculateTieredDeposit({
+        principal: 100_000,
+        startDate: '2024-01-01',
+        endDate: '2024-12-31',
+        tiers: [
+          { minBalance: 0, maxBalance: 50_000, rate: 0.5 },
+          { minBalance: 60_000, maxBalance: null, rate: 1 },
+        ],
+      }),
+    ).toThrow(/must start where tier 1 ends/);
   });
 });
