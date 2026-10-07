@@ -63,4 +63,20 @@ describe('BOT deposit rate parsing', () => {
       'https://rates.example.test/api/deposit_rate?start_period=2025-01-02&end_period=2025-01-02',
     );
   });
+
+  it('shares one request and stops at the first failure instead of walking back every day', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubEnv('VITE_BOT_ENDPOINT', 'https://rates.example.test/api/deposit_rate');
+
+    const { getLatestBotDepositRates } = await import('../depositRates');
+
+    const results = await Promise.allSettled([getLatestBotDepositRates(), getLatestBotDepositRates()]);
+    expect(results.map((r) => r.status)).toEqual(['rejected', 'rejected']);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // A failure isn't remembered: the next caller tries again.
+    await getLatestBotDepositRates().catch(() => undefined);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });
