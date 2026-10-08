@@ -13,7 +13,7 @@ passbook. The rules are Thai banks' rules: interest by actual days over 365, sav
 31 December, and the ฿20,000 savings-tax limit. Deposit rates can be filled in from what each bank reported to the
 Bank of Thailand.
 
-![The loan calculator: "Borrow ฿1,500,000 at 6.5% a year, reducing balance, over 20 years, paid monthly", answered with ฿11,183.60 a month](.github/screenshot.jpg)
+![The loan calculator: "Borrow ฿1,500,000 at 6.5% a year, reducing balance, over 20 years, paid monthly", answered with ฿11,183.60 a month](public/screenshot.jpg)
 
 ## What it does
 

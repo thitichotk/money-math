@@ -1,0 +1,46 @@
+# Money-Math
+
+> Money-Math is a set of Thai loan, savings and deposit calculators, in Thai and English. Each one asks its question
+> as a sentence with blanks to fill in, answers with one big number, and prints the schedule like a bank passbook.
+> Nothing you type is stored or sent anywhere.
+
+The rules are Thai banks' rules: interest by actual days over 365, savings interest paid on 30 June and 31
+December, the ฿20,000 savings-tax limit and 15% withholding tax on fixed deposits. Deposit rates can be filled in
+from what each bank reported to the Bank of Thailand. Every result can be printed or exported as CSV.
+
+## Calculators
+
+- [Loan](https://moneymath.thitichotk.com/loan): each payment, total interest and every instalment, for
+  reducing-balance or flat-rate (car hire-purchase) loans
+- [Savings](https://moneymath.thitichotk.com/savings): interest on a savings account with deposits and withdrawals
+  along the way, with the ฿20,000 tax rule per calendar year
+- [Fixed deposit](https://moneymath.thitichotk.com/fixed): interest over one or more terms, rolled over or paid out,
+  after withholding tax, compared across banks
+- [Tiered](https://moneymath.thitichotk.com/tiered): interest on a tiered-rate account, where each slice of the
+  balance earns its own rate
+- [Future value](https://moneymath.thitichotk.com/future-value): what a lump sum plus regular contributions grows
+  to, by year
+- [NPV](https://moneymath.thitichotk.com/npv): net present value and internal rate of return for a series of cash
+  flows
+
+## Links that carry the inputs
+
+A calculator's inputs live in its URL, so a link reproduces the calculation. Inputs left out take the default.
+
+- Loan: `p` amount in baht, `r` interest % a year, `t` term, `u` term unit (`y` years or `m` months), `f` payments
+  a year (`12`, `4` or `1`), `m` method (`reducing` or `flat`). Example:
+  [/loan?p=1500000&r=6.5&t=20](https://moneymath.thitichotk.com/loan?p=1500000&r=6.5&t=20)
+- Future value: `pv` amount invested now, `c` amount added each period, `f` how often (`monthly`, `quarterly` or
+  `annually`), `tm` added at the `end` or `begin` of each period, `r` return % a year, `y` years. Example:
+  [/future-value?pv=10000&c=1000&r=6&y=10](https://moneymath.thitichotk.com/future-value?pv=10000&c=1000&r=6&y=10)
+- NPV: `i` amount invested today, `r` discount rate % a year, `f` cash flows a year (`1`, `4` or `12`), `cf` the
+  cash flows, comma-separated. Example:
+  [/npv?i=10000&r=8&cf=3500,4000,4500,4500](https://moneymath.thitichotk.com/npv?i=10000&r=8&cf=3500,4000,4500,4500)
+
+## Links
+
+- [Money-Math](https://moneymath.thitichotk.com/): the app
+- [About](https://moneymath.thitichotk.com/about): the rules it follows and where the bank rates come from
+- [Source on GitHub](https://github.com/thitichotk/money-math): MIT licence
+- [README](https://github.com/thitichotk/money-math/blob/main/README.md): what each calculator answers and how it
+  works
